@@ -8,14 +8,8 @@ from typing import List
 
 import pendulum
 
-from clients import list_keys, download_mem, upload_mem
-
-READING_TYPES = ["ACOUSTIC", "IMPACT", "TEMPERATURE", "vehicleComponent", "VISUAL"]
-YEARS = ["2023"]
-MONTHS = ["01"]
-DAYS = [f"0{i}" for i in range(1, 10)]
-BUCKET = "uptake-data-lake-fleet-dev1"
-NS = "http://uptake.com/bhp/1/sensors"
+from aws_utils import list_keys, download_mem, upload_mem
+from consts import READING_TYPES, YEARS, MONTHS, DAYS, BUCKET, NS
 
 logging.basicConfig(
   format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
