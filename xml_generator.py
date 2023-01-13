@@ -1,6 +1,5 @@
 from itertools import cycle
 from typing import List, Tuple, Iterator
-import xml.etree.ElementTree as ET
 
 from attr import define
 

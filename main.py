@@ -43,7 +43,7 @@ def main():
         time.sleep(seconds_to_wait)
         try:
             logging.info(f"Sending records for ts: {ts}")
-            #produce_batch(xml_batch)
+            produce_batch(xml_batch)
         except Exception as e:
             logging.error({'message': 'Error producing record', 'error': str(e), 'record': xml_batch})
 
