@@ -9,7 +9,7 @@ from typing import List
 import pendulum
 
 from aws_utils import list_keys, download_mem, upload_mem
-from consts import READING_TYPES, YEARS, MONTHS, DAYS, BUCKET, NS
+from consts import READING_TYPES, YEARS, MONTHS, DAYS, BUCKET, NS, SRC_DIR
 
 logging.basicConfig(
   format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
@@ -37,7 +37,7 @@ def get_tar_keys(rt: str, y: str, m: str, d: str) -> List[str]:
     validate_arg(m, MONTHS)
     validate_arg(d, DAYS)
 
-    src_dir = f"bhp/legacy-data-snapshot/unprocessed-raw/{rt}/year={y}/month={m}/day={d}/"
+    src_dir = f"{SRC_DIR}/{rt}/year={y}/month={m}/day={d}/"
 
     return list_keys(BUCKET, src_dir)
 

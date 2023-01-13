@@ -4,3 +4,6 @@ MONTHS = ["01"]
 DAYS = [f"0{i}" for i in range(1, 10)]
 BUCKET = "uptake-data-lake-fleet-dev1"
 NS = "http://uptake.com/bhp/1/sensors"
+SRC_DIR = "bhp/legacy-data-snapshot/unprocessed-raw"
+TRGT_DIR = "bhp/legacy-data-snapshot/unpacked-raw"
+STREAM_NAME = "fleet-bhp-stream-poc-dev"

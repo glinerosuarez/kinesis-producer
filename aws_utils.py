@@ -5,6 +5,7 @@ import boto3
 
 s3_client = boto3.Session(profile_name="core-commercial").client('s3')
 s3_resource = boto3.Session(profile_name="core-commercial").resource("s3")
+kinesis = boto3.Session(profile_name="core-commercial").client('kinesis')
 
 
 def list_keys(bucket: str, prefix: str) -> List[str]:

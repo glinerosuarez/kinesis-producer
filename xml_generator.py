@@ -36,12 +36,13 @@ class XmlGenerator:
                         batch = [k]
         yield int(last_ts), batch
 
-    def get_batches(self):
+    def get_batches(self) -> Iterator[Tuple[int, List[bytes]]]:
         for ts, key_batch in self._get_key_batch_iterator():
-            yield [download_mem(BUCKET, key) for key in key_batch]
+            yield ts, [download_mem(BUCKET, key).getvalue() for key in key_batch]
 
 
 if __name__ == '__main__':
-    XmlGenerator("ACOUSTIC").get_batches()
+    itera = XmlGenerator("ACOUSTIC").get_batches()
+    breakpoint()
 
 
