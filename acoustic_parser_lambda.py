@@ -44,17 +44,14 @@ def lambda_handler(event, context):
     output = []
 
     for record in event['records']:
-        print(f"record: {record}")
-        print(f"record.data: {record['data']}")
         payload = base64.b64decode(record['data'])
-        print(f"payload: {payload} type: {type(payload)}")
         parsed_records = parse_xml(payload)
 
         # Do custom processing on the payload here
         output_record = {
             'recordId': record['recordId'],
             'result': 'Ok',
-            'data': base64.b64encode(parsed_records)
+            'data': base64.b64encode(parsed_records).decode("utf-8")
         }
         output.append(output_record)
 
@@ -64,20 +61,18 @@ def lambda_handler(event, context):
 
 def parse_xml(input_xml):
     decoded_xml = input_xml.decode('utf-8')
-    print(f"decoded_xml: {decoded_xml}")
     xml_string = str(decoded_xml)
-    print(f"xml_string: {xml_string}")
     root = ET.fromstring(str(xml_string))  # create element tree object
     payload = root.find(f'./{{{NS}}}messagePayload')
     reading_collection = payload.find(f'./{{{NS}}}readingCollection')
     attrs = [payload.find(f'./{{{NS}}}{a}').text for a in ATTRS]
-    readings = [None] * len(READINGS)
+    readings = [""] * len(READINGS)
 
     for r in reading_collection:
         pos = READINGS.get(r.find(f'./{{{NS}}}attributeName').text)
         if pos is not None:
             readings[pos] = r.find(f'./{{{NS}}}attributeValue').text
 
-    record = "|".join(attrs + readings + ["\n"])
+    record = "|".join(attrs + readings) + "\n"
     print(f"Record: {record}")
     return record.encode('utf-8')
