@@ -44,7 +44,10 @@ def lambda_handler(event, context):
     output = []
 
     for record in event['records']:
+        print(f"record: {record}")
+        print(f"record.data: {record['data']}")
         payload = base64.b64decode(record['data'])
+        print(f"payload: {payload} type: {type(payload)}")
         parsed_records = parse_xml(payload)
 
         # Do custom processing on the payload here
@@ -60,7 +63,10 @@ def lambda_handler(event, context):
 
 
 def parse_xml(input_xml):
-    xml_string = str(input_xml.decode('utf-8'))
+    decoded_xml = input_xml.decode('utf-8')
+    print(f"decoded_xml: {decoded_xml}")
+    xml_string = str(decoded_xml)
+    print(f"xml_string: {xml_string}")
     root = ET.fromstring(str(xml_string))  # create element tree object
     payload = root.find(f'./{{{NS}}}messagePayload')
     reading_collection = payload.find(f'./{{{NS}}}readingCollection')
@@ -73,5 +79,5 @@ def parse_xml(input_xml):
             readings[pos] = r.find(f'./{{{NS}}}attributeValue').text
 
     record = "|".join(attrs + readings + ["\n"])
-    print(record)
+    print(f"Record: {record}")
     return record.encode('utf-8')
