@@ -1,3 +1,4 @@
+import base64
 from itertools import cycle
 from typing import List, Tuple, Iterator
 
@@ -37,7 +38,7 @@ class XmlGenerator:
 
     def get_batches(self) -> Iterator[Tuple[int, List[bytes]]]:
         for ts, key_batch in self._get_key_batch_iterator():
-            yield ts, [download_mem(BUCKET, key).getvalue() for key in key_batch]
+            yield ts, [base64.b64encode(download_mem(BUCKET, key).getvalue()) for key in key_batch]
 
 
 if __name__ == '__main__':
