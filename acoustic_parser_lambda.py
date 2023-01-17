@@ -1,6 +1,6 @@
 import base64
 import xml.etree.ElementTree as ET
-
+from typing import Tuple, List, Dict
 
 NS = "http://uptake.com/bhp/1/sensors"
 ATTRS = [
@@ -11,7 +11,7 @@ ATTRS = [
     "readingTimestampUTC",
     "readingLocation"
 ]
-READINGS = [
+ACOUSTIC_READINGS = [
     "SensorDataQualityDescription",
     "SiteTimeZoneId",
     "SiteName",
@@ -35,9 +35,18 @@ READINGS = [
     "WheelflatDB",
     "TrainVehicleNumber",
 ]
-READINGS = {r: i for r, i in zip(READINGS, range(len(READINGS)))}
+TEMP_ATTRS = ATTRS + ["sourceSystem"]
 
 print('Loading function')
+
+
+def get_fields(type_of_reading: str) -> Tuple[List, Dict]:
+    if type_of_reading == "ACOUSTIC":
+        return ATTRS, {r: i for r, i in zip(ACOUSTIC_READINGS, range(len(ACOUSTIC_READINGS)))}
+    elif type_of_reading == "TEMPERATURE":
+        return TEMP_ATTRS, {"WHEEL_TEMPERATURE": 0, "BEARING_TEMPERATURE": 1}
+    else:
+        raise ValueError(f"Unknown type of reaing: {type_of_reading}")
 
 
 def lambda_handler(event, context):
@@ -65,11 +74,12 @@ def parse_xml(input_xml):
     root = ET.fromstring(str(xml_string))  # create element tree object
     payload = root.find(f'./{{{NS}}}messagePayload')
     reading_collection = payload.find(f'./{{{NS}}}readingCollection')
-    attrs = [payload.find(f'./{{{NS}}}{a}').text for a in ATTRS]
-    readings = [""] * len(READINGS)
+    attr_names, reading_names = get_fields(payload.find(f'./{{{NS}}}typeOfReading').text)
+    attrs = [payload.find(f'./{{{NS}}}{a}').text for a in attr_names]
+    readings = [""] * len(reading_names)
 
     for r in reading_collection:
-        pos = READINGS.get(r.find(f'./{{{NS}}}attributeName').text)
+        pos = reading_names.get(r.find(f'./{{{NS}}}attributeName').text)
         if pos is not None:
             readings[pos] = r.find(f'./{{{NS}}}attributeValue').text
 

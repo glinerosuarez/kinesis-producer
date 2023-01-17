@@ -41,7 +41,7 @@ class XmlGenerator:
 
 
 if __name__ == '__main__':
-    itera = XmlGenerator("ACOUSTIC").get_batches()
+    itera = XmlGenerator("TEMPERATURE").get_batches()
     breakpoint()
 
 
