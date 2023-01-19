@@ -1,6 +1,6 @@
 import base64
+import json
 import xml.etree.ElementTree as ET
-from typing import Tuple, List, Dict
 
 NS = "http://uptake.com/bhp/1/sensors"
 ATTRS = [
@@ -9,9 +9,10 @@ ATTRS = [
     "positionInTrain",
     "typeOfReading",
     "readingTimestampUTC",
-    "readingLocation"
+    "readingLocation",
+    "sourceSystem"
 ]
-ACOUSTIC_READINGS = [
+READINGS = [
     "SensorDataQualityDescription",
     "SiteTimeZoneId",
     "SiteName",
@@ -34,19 +35,20 @@ ACOUSTIC_READINGS = [
     "RMSBandWheelflatDB",
     "WheelflatDB",
     "TrainVehicleNumber",
+    "WHEEL_TEMPERATURE",
+    "BEARING_TEMPERATURE",
+    "weight",
+    "weight_UoM",
+    "vertical_peak_UoM",
+    "vertical_peak",
+    "speed",
+    "speed_UoM",
+    "BrokenSpringDefect",
 ]
-TEMP_ATTRS = ATTRS + ["sourceSystem"]
+
+READINGS_W_UOM = ["weight", "vertical_peak", "speed"]
 
 print('Loading function')
-
-
-def get_fields(type_of_reading: str) -> Tuple[List, Dict]:
-    if type_of_reading == "ACOUSTIC":
-        return ATTRS, {r: i for r, i in zip(ACOUSTIC_READINGS, range(len(ACOUSTIC_READINGS)))}
-    elif type_of_reading == "TEMPERATURE":
-        return TEMP_ATTRS, {"WHEEL_TEMPERATURE": 0, "BEARING_TEMPERATURE": 1}
-    else:
-        raise ValueError(f"Unknown type of reaing: {type_of_reading}")
 
 
 def lambda_handler(event, context):
@@ -74,15 +76,16 @@ def parse_xml(input_xml):
     root = ET.fromstring(str(xml_string))  # create element tree object
     payload = root.find(f'./{{{NS}}}messagePayload')
     reading_collection = payload.find(f'./{{{NS}}}readingCollection')
-    attr_names, reading_names = get_fields(payload.find(f'./{{{NS}}}typeOfReading').text)
-    attrs = [payload.find(f'./{{{NS}}}{a}').text for a in attr_names]
-    readings = [""] * len(reading_names)
+    readings = {k: None for k in READINGS}
 
-    for r in reading_collection:
-        pos = reading_names.get(r.find(f'./{{{NS}}}attributeName').text)
-        if pos is not None:
-            readings[pos] = r.find(f'./{{{NS}}}attributeValue').text
+    attrs = {a: payload.find(f'./{{{NS}}}{a}').text for a in ATTRS}
+    if reading_collection is not None:
+        for r in reading_collection:
+            reading_name = r.find(f'./{{{NS}}}attributeName')
+            if reading_name is not None:
+                readings[reading_name.text] = r.find(f'./{{{NS}}}attributeValue').text
+                if reading_name.text in READINGS_W_UOM:
+                    readings[reading_name.text + "_UoM"] = r.find(f'./{{{NS}}}attributeUoM').text
 
-    record = "|".join(attrs + readings) + "\n"
-    print(f"Record: {record}")
+    record = json.dumps({**attrs, **readings})
     return record.encode('utf-8')
