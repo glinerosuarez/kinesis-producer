@@ -80,4 +80,4 @@ if __name__ == '__main__':
             executor.submit(unpack_tar, key)
             for key in get_tar_keys(args.reading_type, args.year, args.month, args.day)
         ])
-    logging.info(f"xml files unpacked successfully for {args.reading_type} {args.year} {args.month} {args.day}")
+    logging.info(f"xml files unpacked successfully for {args.reading_type} {args.year} {args.month} {args.day}.")

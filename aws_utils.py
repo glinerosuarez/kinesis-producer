@@ -1,11 +1,26 @@
 import io
+import logging
+import multiprocessing
 from typing import List
+from concurrent.futures import ThreadPoolExecutor, wait
 
 import boto3
+import botocore
+
+import consts
 
 s3_client = boto3.Session(profile_name="core-commercial").client('s3')
-s3_resource = boto3.Session(profile_name="core-commercial").resource("s3")
+s3_resource = boto3.Session(profile_name="core-commercial").resource(
+    "s3", config=botocore.config.Config(max_pool_connections=50)
+)
 kinesis = boto3.Session(profile_name="core-commercial").client('kinesis')
+
+logging.basicConfig(
+  format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+  datefmt='%Y-%m-%d %H:%M:%S',
+  level=logging.INFO,
+  handlers=[logging.FileHandler(f"unpacker_{multiprocessing.current_process().pid}.log")]
+)
 
 
 def list_keys(bucket: str, prefix: str) -> List[str]:
@@ -16,6 +31,36 @@ def list_keys(bucket: str, prefix: str) -> List[str]:
     :return: key for each object.
     """
     return [obj.key for obj in (s3_resource.Bucket(bucket).objects.filter(Prefix=str(prefix)).all())]
+
+
+def list_obj_in_batches(bucket: str, prefix: str, max_batch_size: int = 128_000_000):
+    batch_size = 0
+    result = []
+
+    for obj in s3_resource.Bucket(bucket).objects.filter(Prefix=str(prefix)).all():
+        if batch_size + obj.size >= max_batch_size:
+            if len(result) == 0:
+                raise ValueError(f"max_batch_size too small.")
+            yield result, batch_size
+            result = []
+            batch_size = obj.size
+            result.append(obj)
+        else:
+            result.append(obj)
+            batch_size += obj.size
+
+
+def get_file_contents_in_batches(bucket: str, prefix: str, max_batch_size: int = 128_000_000, n_threads: int = 50):
+    result = []
+
+    with ThreadPoolExecutor(max_workers=n_threads) as executor:
+        for objs, batch_size in list_obj_in_batches(bucket=bucket, prefix=prefix, max_batch_size=max_batch_size):
+            logging.info(f"Downloading {len(objs)} xml files.")
+            wait([executor.submit(lambda: result.append(obj.get()["Body"].read().decode("utf-8"))) for obj in objs])
+
+            logging.info(f"{len(result)} xml files download successfully for {bucket}/{prefix}.")
+            yield result
+            result = []
 
 
 def download_mem(bucket_name: str, key: str) -> io.BytesIO:
@@ -33,3 +78,12 @@ def download_mem(bucket_name: str, key: str) -> io.BytesIO:
 
 def upload_mem(file, bucket, key):
     s3_client.put_object(Body=file, Bucket=bucket, Key=key)
+
+
+def upload_fileobj(buffer, bucket, key):
+    s3_client.upload_fileobj(buffer, bucket, key)
+
+
+if __name__ == '__main__':
+    for data in get_file_contents_in_batches(consts.BUCKET, f"{consts.TRGT_DIR}/ACOUSTIC/year=2023/month=01/day=01/", 30_000):
+        breakpoint()
