@@ -1,3 +1,4 @@
+import abc
 import argparse
 import io
 import logging
@@ -5,7 +6,7 @@ import multiprocessing
 import re
 import time
 import xml.etree.ElementTree as ET
-from typing import Iterator, List
+from typing import List, Dict
 
 import pandas as pd
 
@@ -18,41 +19,77 @@ logging.basicConfig(
   format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
   datefmt='%Y-%m-%d %H:%M:%S',
   level=logging.INFO,
-  handlers=[logging.FileHandler(f"unpacker_{multiprocessing.current_process().pid}.log")]
+  handlers=[logging.FileHandler(f"flattener_{multiprocessing.current_process().pid}.log")]
 )
 
 
-class XMLFlattener:
-    VEHICLE_COMPONENT_NS = "http://www.uptake.com/bhp/1/vehicleComponent"
-    SIGNAL_NS = "{http://uptake.com/bhp/1/sensors}"
+class XMLFlattener(abc.ABC):
+    @property
+    @abc.abstractmethod
+    def ns(self) -> str:
+        raise NotImplementedError
 
-    @staticmethod
-    def get_version_n_encoding(string: str):
-        re_expression = r"<\?xml version='(.*?)' encoding='(.*?)'\?>"
-        match = re.search(re_expression, string)
-        return (match.group(1), match.group(2)) if match else None
+    @abc.abstractmethod
+    def flatten(self, xml: str) -> List[Dict]:
+        raise NotImplementedError
 
-    @staticmethod
-    def get_opening_tag(string: str):
-        match = re.search(r'<NS1:(.*?) ', string)
-        return match.group(1) if match else None
+    def flatten_batch(self, xmls: List[str]) -> pd.DataFrame:
+        rows = []
+        for xml in xmls:
+            rows.extend(self.flatten(xml))
 
-    def get_xml_iter(self, lines: List[str]) -> Iterator[str]:
-        lines = iter(lines)
-        first_line = next(lines)
-        if self.get_version_n_encoding(first_line) is None:
-            raise ValueError(f"The first line of the file is not in the expected format.")
-        else:
-            xml = first_line
+        return pd.DataFrame(rows)
 
-        for i, line in enumerate(lines):
-            if self.get_version_n_encoding(line) is None:
-                xml += line
+
+class VehicleComponentFlattener(XMLFlattener):
+    @property
+    def ns(self) -> str:
+        return "{http://www.uptake.com/bhp/1/vehicleComponent}"
+
+    def flatten(self, xml: str) -> List[Dict]:
+        records = []
+        vc_attrs = dict()
+        vc = ET.fromstring(xml)
+        component_code = vc.find(f'./{self.ns}componentCode').text
+
+        for e in vc:
+            if len(e) > 0:
+                if e.tag == f"{self.ns}componentCollection":
+                    for component in e:
+                        self.parse_component(component, component_code, records)
+                else:
+                    raise ValueError(f"Unknown collection of elements: {e.tag}.")
             else:
-                end = line.find("<?")
-                xml += line[:end]
-                yield xml
-                xml = line[end:]
+                vc_attrs[e.tag.replace(self.ns, "")] = e.text
+
+        return [{**vc_attrs, **r} for r in records]
+
+    def parse_component(self, component, parent_code: str, records: List[Dict]):
+        record = {}
+        component_code = component.find(f'./{self.ns}componentCode').text
+
+        for element in component:
+            if len(element) > 0:
+                if element.tag == f"{self.ns}subcomponentCollection":
+                    for subcomponent in element:
+                        self.parse_component(subcomponent, component_code, records)
+                elif element.tag == f"{self.ns}componentAttributeCollection":
+                    for at in element:
+                        if len(at) != 2:
+                            raise ValueError(f"Unknown attribute structure: {at}")
+                        record[at.find(f'./{self.ns}attributeName').text] = at.find(f'./{self.ns}attributeValue').text
+                else:
+                    raise ValueError(f"Unknown collection: {element}")
+            else:
+                record[element.tag.replace(self.ns, "")] = element.text
+        record["parent_code"] = parent_code
+        records.append(record)
+
+
+class SignalFlattener(XMLFlattener):
+    @property
+    def ns(self) -> str:
+        return "{http://uptake.com/bhp/1/sensors}"
 
     def flatten_signals(self, xmls: List[str]):
         signal_rows = []
@@ -116,7 +153,11 @@ if __name__ == '__main__':
 
     for files in get_file_contents_in_batches(bucket=consts.BUCKET, prefix=prefix):
         logging.info(f"Flattening {len(files)} xml files.")
-        df = flattener.flatten_signals(files)
+
+        if args.reading_type == "vehicleComponent":
+            ...
+        else:
+            df = flattener.flatten_signals(files)
 
         buf = io.BytesIO()
         df.to_csv(buf, index=False)

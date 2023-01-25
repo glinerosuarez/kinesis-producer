@@ -1,7 +1,7 @@
 READING_TYPES = ["ACOUSTIC", "IMPACT", "TEMPERATURE", "vehicleComponent", "VISUAL"]
-YEARS = ["2023"]
-MONTHS = ["01"]
-DAYS = [f"0{i}" for i in range(1, 10)]
+YEARS = ["2022", "2023"]
+MONTHS = [f"{i:02d}" for i in range(1, 13)]
+DAYS = [f"{i:02d}" for i in range(1, 32)]
 BUCKET = "uptake-data-lake-fleet-dev1"
 NS = "http://uptake.com/bhp/1/sensors"
 SRC_DIR = "bhp/legacy-data-snapshot/unprocessed-raw"
