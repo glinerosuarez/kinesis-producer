@@ -6,7 +6,7 @@ import multiprocessing
 import re
 import time
 import xml.etree.ElementTree as ET
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 import pandas as pd
 
@@ -50,13 +50,12 @@ class VehicleComponentFlattener(XMLFlattener):
         records = []
         vc_attrs = dict()
         vc = ET.fromstring(xml)
-        component_code = vc.find(f'./{self.ns}componentCode').text
 
         for e in vc:
             if len(e) > 0:
                 if e.tag == f"{self.ns}componentCollection":
                     for component in e:
-                        self.parse_component(component, component_code, records)
+                        self.parse_component(component, None, records)
                 else:
                     raise ValueError(f"Unknown collection of elements: {e.tag}.")
             else:
@@ -64,24 +63,24 @@ class VehicleComponentFlattener(XMLFlattener):
 
         return [{**vc_attrs, **r} for r in records]
 
-    def parse_component(self, component, parent_code: str, records: List[Dict]):
+    def parse_component(self, component: ET.Element, parent_code: Optional[str], records: List[Dict]) -> None:
         record = {}
         component_code = component.find(f'./{self.ns}componentCode').text
 
         for element in component:
-            if len(element) > 0:
-                if element.tag == f"{self.ns}subcomponentCollection":
-                    for subcomponent in element:
-                        self.parse_component(subcomponent, component_code, records)
-                elif element.tag == f"{self.ns}componentAttributeCollection":
-                    for at in element:
-                        if len(at) != 2:
-                            raise ValueError(f"Unknown attribute structure: {at}")
-                        record[at.find(f'./{self.ns}attributeName').text] = at.find(f'./{self.ns}attributeValue').text
-                else:
-                    raise ValueError(f"Unknown collection: {element}")
+            if element.tag == f"{self.ns}subcomponentCollection":
+                for subcomponent in element:
+                    self.parse_component(subcomponent, component_code, records)
+            elif element.tag == f"{self.ns}componentAttributeCollection":
+                for at in element:
+                    if len(at) != 2:
+                        raise ValueError(f"Unknown attribute structure: {at}")
+                    record[at.find(f'./{self.ns}attributeName').text] = at.find(f'./{self.ns}attributeValue').text
             else:
+                if len(element) > 0:
+                    raise ValueError(f"Unknown collection: {element}")
                 record[element.tag.replace(self.ns, "")] = element.text
+
         record["parent_code"] = parent_code
         records.append(record)
 
@@ -91,52 +90,43 @@ class SignalFlattener(XMLFlattener):
     def ns(self) -> str:
         return "{http://uptake.com/bhp/1/sensors}"
 
-    def flatten_signals(self, xmls: List[str]):
-        signal_rows = []
-
-        for xml in xmls:
-            signal_rows.append(self.flatten_signal(xml))
-
-        return pd.DataFrame(signal_rows)
-
-    def flatten_signal(self, xml: str):
+    def flatten(self, xml: str) -> List[Dict]:
         record = dict()
         root = ET.fromstring(xml)
 
         for parent_e in root:
             for e in parent_e:
-                if len(e) > 0:
-                    if e.tag == f"{self.SIGNAL_NS}readingCollection":
-                        for r in e:
-                            col_name = col_val = col_uom = None
-                            for at in r:
-                                if at.tag == f"{self.SIGNAL_NS}attributeName":
-                                    col_name = at.text
-                                elif at.tag == f"{self.SIGNAL_NS}attributeValue":
-                                    col_val = at.text
-                                elif at.tag == f"{self.SIGNAL_NS}attributeUoM":
-                                    col_uom = at.text
-                                else:
-                                    raise ValueError(f"Unknown reading attribute: {at.tag}: {at.text}")
-                            record[col_name] = col_val
-                            if col_uom is not None:
-                                record[col_name + "_UoM"] = col_uom
-                    else:
-                        raise ValueError(f"Unknown collection of elements: {e.tag}.")
+                if e.tag == f"{self.ns}readingCollection":
+                    for r in e:
+                        col_name = col_val = col_uom = None
+                        for at in r:
+                            if at.tag == f"{self.ns}attributeName":
+                                col_name = at.text
+                            elif at.tag == f"{self.ns}attributeValue":
+                                col_val = at.text
+                            elif at.tag == f"{self.ns}attributeUoM":
+                                col_uom = at.text
+                            else:
+                                raise ValueError(f"Unknown reading attribute: {at.tag}: {at.text}")
+                        record[col_name] = col_val
+                        if col_uom is not None:
+                            record[col_name + "_UoM"] = col_uom
                 else:
-                    record[e.tag.replace(self.SIGNAL_NS, "")] = e.text
+                    if len(e) > 0:
+                        raise ValueError(f"Unknown collection of elements: {e.tag}.")
+                    record[e.tag.replace(self.ns, "")] = e.text
 
-        return record
+        return [record]
 
-    def flatten(self, file: str):
-        match = re.search(r'xmlns:NS1="(.*?)"', file)
-        ns = match.group(1)
-        if ns == self.SIGNAL_NS.strip("{}"):
-            self.flatten_signal(file)
-        elif ns == self.VEHICLE_COMPONENT_NS:
-            ...
-        else:
-            raise ValueError(f"Unknown namespace: {ns}")
+    #def flatten(self, file: str):
+    #    match = re.search(r'xmlns:NS1="(.*?)"', file)
+    #    ns = match.group(1)
+    #    if ns == self.SIGNAL_NS.strip("{}"):
+    #        self.flatten_signal(file)
+    #    elif ns == self.VEHICLE_COMPONENT_NS:
+    #        ...
+    #    else:
+    #        raise ValueError(f"Unknown namespace: {ns}")
 
 
 if __name__ == '__main__':
@@ -147,24 +137,20 @@ if __name__ == '__main__':
     parser.add_argument("day", type=str)
     args = parser.parse_args()
 
-    flattener = XMLFlattener()
+    flattener = SignalFlattener() if args.reading_type in consts.SIGNALS else VehicleComponentFlattener()
     prefix = f"{consts.TRGT_DIR}/{args.reading_type}/year={args.year}/month={args.month}/day={args.day}/"
-    logging.info(f"Starting flattener for files in: {prefix}.")
+    logging.info(f"Flattening files in: {prefix}.")
 
     for files in get_file_contents_in_batches(bucket=consts.BUCKET, prefix=prefix):
         logging.info(f"Flattening {len(files)} xml files.")
-
-        if args.reading_type == "vehicleComponent":
-            ...
-        else:
-            df = flattener.flatten_signals(files)
+        df = flattener.flatten_batch(files)
 
         buf = io.BytesIO()
         df.to_csv(buf, index=False)
         buf.seek(0)
 
         filepath = f"{consts.FLATTENED_FILES_DIR}/{args.reading_type}/year={args.year}/month={args.month}/day={args.day}/"
-        filename = f"{args.reading_type}_{int(time.time() * 1_000)}_{args.year}{args.month}{args.day}_{len(df.index)}.csv"
+        filename = f"{args.reading_type}_{args.year}{args.month}{args.day}_{len(df.index)}.csv"
         logging.info(f"Saving file to {filepath + filename}.")
         aws_utils.upload_fileobj(buf, consts.BUCKET, filepath + filename)
         logging.info(f"File saved successfully.")
