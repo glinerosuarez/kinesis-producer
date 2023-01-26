@@ -65,7 +65,7 @@ if __name__ == '__main__':
     parser.add_argument("day", type=str)
     args = parser.parse_args()
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=50) as executor:
         wait([
             executor.submit(unpack_tar, key)
             for key in get_tar_keys(args.reading_type, args.year, args.month, args.day)
