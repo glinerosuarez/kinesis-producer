@@ -51,17 +51,7 @@ def unpack_tar(key: str) -> None:
 
     for m_info in tar.getmembers():  # Iterate over files inside the tar file.
         member = tar.extractfile(m_info)
-        xml_data = ET.fromstring(member.read())
-
-        if "vehicleComponent" in key:
-            ts = xml_data.findall(f'.//{{http://www.uptake.com/bhp/1/vehicleComponent}}effectiveDate')
-        else:
-            ts = xml_data.findall(f'.//{{{NS}}}messageTimestampUTC')
-
-        if len(ts) != 1:
-            raise ValueError("number of messageTimestampUTC elements is different than 0.")
-        ts = int(pendulum.parse(ts[0].text, tz="UTC").timestamp() * 1_000)
-        trgt_file = f"{trgt_dir}/{ts}_{m_info.name}"
+        trgt_file = f"{trgt_dir}/{m_info.name}"
         member.seek(0)
         upload_mem(member, BUCKET, trgt_file)
         logging.info(f"file {trgt_file} has been uploaded successfully.")
