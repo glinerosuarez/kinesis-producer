@@ -1,6 +1,6 @@
 import io
 import logging
-from typing import List
+from typing import List, Iterator, Tuple
 from concurrent.futures import ThreadPoolExecutor, wait
 
 import boto3
@@ -24,7 +24,7 @@ def list_keys(bucket: str, prefix: str) -> List[str]:
     return [obj.key for obj in (s3_resource.Bucket(bucket).objects.filter(Prefix=str(prefix)).all())]
 
 
-def list_obj_in_batches(bucket: str, prefix: str, max_batch_size: int = 128_000_000):
+def list_obj_in_batches(bucket: str, prefix: str, max_batch_size: int = 128_000_000) -> Iterator[Tuple[List, int]]:
     batch_size = 0
     result = []
 

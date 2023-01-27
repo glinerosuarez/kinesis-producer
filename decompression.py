@@ -1,15 +1,13 @@
 import argparse
+import io
 import logging
 import multiprocessing
 import tarfile
-import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import List
 
-import pendulum
-
-from aws_utils import list_keys, download_mem, upload_mem
-from consts import READING_TYPES, YEARS, MONTHS, DAYS, BUCKET, NS, SRC_DIR
+from aws_utils import download_mem, upload_mem, list_obj_in_batches
+from consts import READING_TYPES, YEARS, MONTHS, DAYS, BUCKET, SRC_DIR
 
 logging.basicConfig(
   format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
@@ -18,43 +16,37 @@ logging.basicConfig(
   handlers=[logging.FileHandler(f"unpacker_{multiprocessing.current_process().pid}.log")]
 )
 
-
-def get_tar_keys(rt: str, y: str, m: str, d: str) -> List[str]:
-    """
-    Unpack xml's from tar files
-    :param rt: one of READING_TYPES
-    :param y: year, one of YEARS
-    :param m: month, one of MONTHS
-    :param d: day, one of DAYS
-    :return:
-    """
-    def validate_arg(arg, valid_vals):
-        if arg not in valid_vals:
-            raise ValueError(f"Invalid argument: {arg}, must be one of {valid_vals}")
-
-    validate_arg(rt, READING_TYPES)
-    validate_arg(y, YEARS)
-    validate_arg(m, MONTHS)
-    validate_arg(d, DAYS)
-
-    src_dir = f"{SRC_DIR}/{rt}/year={y}/month={m}/day={d}/"
-
-    return list_keys(BUCKET, src_dir)
+unpacked_files = 0
+xml_files = 0
 
 
-def unpack_tar(key: str) -> None:
-    trgt_dir = "/".join(key.split("/")[:-1]).replace("unprocessed-raw", "unpacked-raw")
-    #logging.info(f"unpacking file {key}.")
+def validate_arg(arg, valid_vals):
+    if arg not in valid_vals:
+        raise ValueError(f"Invalid argument: {arg}, must be one of {valid_vals}")
 
-    obj = download_mem(BUCKET, key)
-    tar = tarfile.open(fileobj=obj)
 
-    for m_info in tar.getmembers():  # Iterate over files inside the tar file.
-        member = tar.extractfile(m_info)
-        trgt_file = f"{trgt_dir}/{m_info.name}"
-        member.seek(0)
-        upload_mem(member, BUCKET, trgt_file)
-        logging.info(f"file {trgt_file} has been uploaded successfully.")
+def unpack_tar(batch: List[str], trgt_file: str) -> None:
+    global unpacked_files, xml_files
+    buffer = io.BytesIO()
+
+    for obj in batch:
+        tar_obj = download_mem(BUCKET, obj.key)
+        tar = tarfile.open(fileobj=tar_obj)
+
+        for m_info in tar.getmembers():  # Iterate over files inside the tar file.
+            member = tar.extractfile(m_info)
+            member.seek(0)
+            buffer.write(member.read())
+            buffer.write("\n".encode("utf-8"))
+            xml_files += 1
+
+    buffer.seek(0)
+    upload_mem(buffer, BUCKET, trgt_file)
+
+    unpacked_files += len(batch)
+    logging.info(
+        f"{unpacked_files} tar files have been unpacked successfully, {xml_files} xml files have been uploaded to s3."
+    )
 
 
 if __name__ == '__main__':
@@ -65,9 +57,20 @@ if __name__ == '__main__':
     parser.add_argument("day", type=str)
     args = parser.parse_args()
 
-    with ThreadPoolExecutor(max_workers=50) as executor:
+    validate_arg(args.reading_type, READING_TYPES)
+    validate_arg(args.year, YEARS)
+    validate_arg(args.month, MONTHS)
+    validate_arg(args.day, DAYS)
+
+    src_dir = f"{SRC_DIR}/{args.reading_type}/year={args.year}/month={args.month}/day={args.day}/"
+    trgt_dir = src_dir.replace("unprocessed-raw", "unpacked-compacted-raw")
+
+    logging.info(f"Unpacking tar files in {src_dir}.")
+
+    with ThreadPoolExecutor(max_workers=45) as executor:
         wait([
-            executor.submit(unpack_tar, key)
-            for key in get_tar_keys(args.reading_type, args.year, args.month, args.day)
+            executor.submit(unpack_tar, batch, trgt_dir + f"{len(batch)}_{size}")
+            for batch, size in list_obj_in_batches(bucket=BUCKET, prefix=src_dir)
         ])
-    logging.info(f"xml files unpacked successfully for {args.reading_type} {args.year} {args.month} {args.day}.")
+
+    logging.info(f"{xml_files} xml files unpacked successfully from {unpacked_files} tar files for {src_dir}.")

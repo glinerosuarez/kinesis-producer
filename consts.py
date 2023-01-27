@@ -6,6 +6,6 @@ DAYS = [f"{i:02d}" for i in range(1, 32)]
 BUCKET = "uptake-data-lake-fleet-dev1"
 NS = "http://uptake.com/bhp/1/sensors"
 SRC_DIR = "bhp/legacy-data-snapshot/unprocessed-raw"
-TRGT_DIR = "bhp/legacy-data-snapshot/unpacked-raw"
+TRGT_DIR = "bhp/legacy-data-snapshot/unpacked-compacted-raw"
 STREAM_NAME = "fleet-bhp-stream-poc-dev"
 FLATTENED_FILES_DIR = "bhp/legacy-data-snapshot/flattened-raw"
