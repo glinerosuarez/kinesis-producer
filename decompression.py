@@ -67,7 +67,7 @@ if __name__ == '__main__':
 
     logging.info(f"Unpacking tar files in {src_dir}.")
 
-    with ThreadPoolExecutor(max_workers=45) as executor:
+    with ThreadPoolExecutor(max_workers=5) as executor:
         wait([
             executor.submit(unpack_tar, batch, trgt_dir + f"{len(batch)}_{size}")
             for batch, size in list_obj_in_batches(bucket=BUCKET, prefix=src_dir)
