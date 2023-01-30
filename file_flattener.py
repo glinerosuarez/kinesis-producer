@@ -3,8 +3,6 @@ import argparse
 import io
 import logging
 import multiprocessing
-import re
-import time
 import xml.etree.ElementTree as ET
 from typing import List, Dict, Optional
 
@@ -29,6 +27,11 @@ class XMLFlattener(abc.ABC):
     def ns(self) -> str:
         raise NotImplementedError
 
+    @property
+    @abc.abstractmethod
+    def end_tag(self) -> str:
+        raise NotImplementedError
+
     @abc.abstractmethod
     def flatten(self, xml: str) -> List[Dict]:
         raise NotImplementedError
@@ -40,8 +43,22 @@ class XMLFlattener(abc.ABC):
 
         return pd.DataFrame(rows)
 
+    def flatten_compacted_files(self, compacted_files: List[str]) -> pd.DataFrame:
+        return self.flatten_batch(
+            [
+                xml.strip() + "\n" + self.end_tag
+                for cf in compacted_files
+                for xml in cf.split(self.end_tag)
+                if len(xml.strip()) > 0
+            ]
+        )
+
 
 class VehicleComponentFlattener(XMLFlattener):
+    @property
+    def end_tag(self) -> str:
+        return "</NS1:vehicleComponent>"
+
     @property
     def ns(self) -> str:
         return "{http://www.uptake.com/bhp/1/vehicleComponent}"
@@ -87,6 +104,10 @@ class VehicleComponentFlattener(XMLFlattener):
 
 class SignalFlattener(XMLFlattener):
     @property
+    def end_tag(self) -> str:
+        return "</NS1:message>"
+
+    @property
     def ns(self) -> str:
         return "{http://uptake.com/bhp/1/sensors}"
 
@@ -118,16 +139,6 @@ class SignalFlattener(XMLFlattener):
 
         return [record]
 
-    #def flatten(self, file: str):
-    #    match = re.search(r'xmlns:NS1="(.*?)"', file)
-    #    ns = match.group(1)
-    #    if ns == self.SIGNAL_NS.strip("{}"):
-    #        self.flatten_signal(file)
-    #    elif ns == self.VEHICLE_COMPONENT_NS:
-    #        ...
-    #    else:
-    #        raise ValueError(f"Unknown namespace: {ns}")
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -141,10 +152,9 @@ if __name__ == '__main__':
     prefix = f"{consts.TRGT_DIR}/{args.reading_type}/year={args.year}/month={args.month}/day={args.day}/"
     logging.info(f"Flattening files in: {prefix}.")
 
-    for files in get_file_contents_in_batches(bucket=consts.BUCKET, prefix=prefix):
+    for files in get_file_contents_in_batches(bucket=consts.BUCKET, prefix=prefix, max_batch_size=3e8):
         logging.info(f"Flattening {len(files)} xml files.")
-        df = flattener.flatten_batch(files)
-
+        df = flattener.flatten_compacted_files(files)
         buf = io.BytesIO()
         df.to_csv(buf, index=False)
         buf.seek(0)

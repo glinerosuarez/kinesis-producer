@@ -31,17 +31,21 @@ def list_obj_in_batches(bucket: str, prefix: str, max_batch_size: int = 128_000_
     for obj in s3_resource.Bucket(bucket).objects.filter(Prefix=str(prefix)).all():
         if batch_size + obj.size >= max_batch_size:
             if len(result) == 0:
-                raise ValueError(f"max_batch_size too small.")
-            yield result, batch_size
-            result = []
-            batch_size = obj.size
-            result.append(obj)
+                yield [obj], obj.size
+            else:
+                yield result, batch_size
+                result = []
+                batch_size = obj.size
+                result.append(obj)
         else:
             result.append(obj)
             batch_size += obj.size
 
+    if len(result) > 0:
+        yield result, batch_size
 
-def get_file_contents_in_batches(bucket: str, prefix: str, max_batch_size: int = 128_000_000, n_threads: int = 50):
+
+def get_file_contents_in_batches(bucket: str, prefix: str, max_batch_size: int = 128_000_000, n_threads: int = 5):
     result = []
 
     with ThreadPoolExecutor(max_workers=n_threads) as executor:
