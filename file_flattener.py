@@ -1,5 +1,6 @@
 import abc
 import argparse
+import csv
 import io
 import logging
 import multiprocessing
@@ -82,7 +83,8 @@ class VehicleComponentFlattener(XMLFlattener):
 
     def parse_component(self, component: ET.Element, parent_code: Optional[str], records: List[Dict]) -> None:
         record = {}
-        component_code = component.find(f'./{self.ns}componentCode').text
+        component_code_element = component.find(f'./{self.ns}componentCode')
+        component_code = None if component_code_element is None else component_code_element.text
 
         for element in component:
             if element.tag == f"{self.ns}subcomponentCollection":
@@ -90,9 +92,12 @@ class VehicleComponentFlattener(XMLFlattener):
                     self.parse_component(subcomponent, component_code, records)
             elif element.tag == f"{self.ns}componentAttributeCollection":
                 for at in element:
-                    if len(at) != 2:
-                        raise ValueError(f"Unknown attribute structure: {at}")
-                    record[at.find(f'./{self.ns}attributeName').text] = at.find(f'./{self.ns}attributeValue').text
+                    if len(at) == 2:
+                        record[at.find(f'./{self.ns}attributeName').text] = at.find(f'./{self.ns}attributeValue').text
+                    elif len(at) == 1:
+                        record[at.find(f'./{self.ns}attributeName').text] = None
+                    else:
+                        raise ValueError(f"Unknown attribute structure: {list(at)}")
             else:
                 if len(element) > 0:
                     raise ValueError(f"Unknown collection: {element}")
@@ -156,7 +161,7 @@ if __name__ == '__main__':
         logging.info(f"Flattening {len(files)} xml files.")
         df = flattener.flatten_compacted_files(files)
         buf = io.BytesIO()
-        df.to_csv(buf, index=False)
+        df.to_csv(buf, index=False, quoting=csv.QUOTE_ALL)
         buf.seek(0)
 
         filepath = f"{consts.FLATTENED_FILES_DIR}/{args.reading_type}/year={args.year}/month={args.month}/day={args.day}/"
