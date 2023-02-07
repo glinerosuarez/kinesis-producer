@@ -1,5 +1,6 @@
 import argparse
 import io
+import json
 import logging
 import multiprocessing
 import tarfile
@@ -36,7 +37,10 @@ def unpack_tar(batch: List[str], trgt_file: str) -> None:
         for m_info in tar.getmembers():  # Iterate over files inside the tar file.
             member = tar.extractfile(m_info)
             member.seek(0)
-            buffer.write(member.read())
+            json_obj = json.dumps(
+                dict(payload=member.read().decode("utf-8"), tenant_id="bhp", partition_id=args.reading_type)
+            ).encode('utf-8')
+            buffer.write(json_obj)
             buffer.write("\n".encode("utf-8"))
             xml_files += 1
 
