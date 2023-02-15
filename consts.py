@@ -1,6 +1,6 @@
 SIGNALS = ["ACOUSTIC", "IMPACT", "TEMPERATURE", "VISUAL"]
 READING_TYPES = SIGNALS + ["vehicleComponent"]
-YEARS = ["2022", "2023"]
+YEARS = ["2022"]
 MONTHS = [f"{i:02d}" for i in range(1, 13)]
 DAYS = [f"{i:02d}" for i in range(1, 32)]
 BUCKET = "uptake-data-lake-fleet-dev1"
